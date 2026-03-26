@@ -1,0 +1,38 @@
+version: '3.9'
+
+services:
+
+  zoho-crm-ext:
+    build: .
+    container_name: liferay-zoho-crm-ext
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - liferay-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: zoho-crm-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - liferay-net
+
+networks:
+  liferay-net:
+    driver: bridge

@@ -1,0 +1,67 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  client-extension.yaml
+#  Liferay DXP Client Extension descriptor for the Zoho CRM integration.
+#  Docs: https://learn.liferay.com/dxp/latest/en/building-applications/client-extensions.html
+# ─────────────────────────────────────────────────────────────────────────────
+
+assemble:
+  - fromTask: packageDeployable   # built by the Liferay Workspace Gradle plugin
+
+liferay-zoho-crm-microservice:
+  # ── Extension identity ───────────────────────────────────────────────────
+  name: Liferay Zoho CRM Integration
+  type: microservice              # Node.js backend service
+  description: >
+    Bidirectional synchronisation between Liferay DXP and Zoho CRM.
+    Exposes REST endpoints consumed by Liferay fragments, widgets, and objects.
+
+  # ── Runtime ──────────────────────────────────────────────────────────────
+  sourceCodeURL: https://github.com/your-org/liferay-zoho-crm-ext
+  mainCommand: node src/server.js
+
+  # ── Health probe (Liferay calls this to verify the service is alive) ─────
+  healthCheckPath: /health
+
+  # ── OAuth 2.0 configuration for Liferay → Extension calls ────────────────
+  oAuth2ApplicationExternalReferenceCode: liferay-zoho-crm-oauth2
+
+  # ── Routing: Liferay gateway will forward /o/zoho-crm/** to this service ─
+  http:
+    paths:
+      - path: /o/zoho-crm
+        servicePort: 3000
+
+# ── Companion: OAuth 2.0 application so Liferay can obtain tokens ──────────
+liferay-zoho-crm-oauth2:
+  type: oAuthApplicationHeadlessServer
+  name: Zoho CRM OAuth2 Client
+  description: OAuth 2.0 application enabling Liferay to authenticate with the Zoho CRM extension.
+  homePageURL: http://localhost:3000
+  privacyPolicyURL: http://localhost:3000/privacy
+
+# ── Optional: configuration entry visible in Liferay's Instance Settings ───
+liferay-zoho-crm-config:
+  type: instanceSettings
+  name: Zoho CRM Integration Settings
+  category: third-party
+  fields:
+    - name: zohoClientId
+      label: Zoho Client ID
+      type: text
+      required: true
+    - name: zohoApiBaseUrl
+      label: Zoho API Base URL
+      type: text
+      defaultValue: https://www.zohoapis.com/crm/v3
+    - name: syncIntervalMinutes
+      label: Sync Interval (minutes)
+      type: integer
+      defaultValue: 30
+    - name: enableWebhooks
+      label: Enable Webhook Receiver
+      type: checkbox
+      defaultValue: true
+    - name: enableRedisCache
+      label: Enable Redis Cache
+      type: checkbox
+      defaultValue: false

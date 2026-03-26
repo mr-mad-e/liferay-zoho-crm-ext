@@ -1,0 +1,549 @@
+openapi: 3.0.3
+info:
+  title: Liferay ↔ Zoho CRM Client Extension API
+  description: |
+    RESTful API that bridges Liferay DXP and Zoho CRM.
+    Exposes CRUD operations for Leads, Contacts, and Deals,
+    plus bulk sync endpoints and a real-time webhook receiver.
+  version: 1.0.0
+  contact:
+    name: Your Organisation
+    email: dev@your-org.com
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://your-liferay-host/o/zoho-crm
+    description: Production (via Liferay gateway)
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: Auth
+    description: Zoho OAuth 2.0 flow
+  - name: Leads
+    description: Zoho CRM Leads module
+  - name: Contacts
+    description: Zoho CRM Contacts module
+  - name: Deals
+    description: Zoho CRM Deals module
+  - name: Sync
+    description: Bulk bidirectional synchronisation
+  - name: Webhooks
+    description: Real-time event receiver from Zoho CRM
+  - name: Health
+    description: Liveness and readiness probes
+
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ── Health ─────────────────────────────────────────────────────────────────
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ── Auth ────────────────────────────────────────────────────────────────────
+  /auth/zoho/connect:
+    get:
+      tags: [Auth]
+      summary: Redirect to Zoho consent screen
+      security: []
+      responses:
+        '302':
+          description: Redirect to Zoho authorization URL
+
+  /auth/zoho/callback:
+    get:
+      tags: [Auth]
+      summary: OAuth callback — exchange code for tokens
+      security: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tokens obtained
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/zoho/refresh:
+    post:
+      tags: [Auth]
+      summary: Manually refresh the Zoho access token
+      responses:
+        '200':
+          description: Token refreshed
+
+  # ── Leads ───────────────────────────────────────────────────────────────────
+  /api/leads:
+    get:
+      tags: [Leads]
+      summary: List leads (paginated)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - $ref: '#/components/parameters/Fields'
+        - $ref: '#/components/parameters/Criteria'
+        - $ref: '#/components/parameters/NoCache'
+      responses:
+        '200':
+          description: Paginated list of leads
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Leads]
+      summary: Create or upsert lead(s)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/Lead'
+                - type: array
+                  items:
+                    $ref: '#/components/schemas/Lead'
+      responses:
+        '201':
+          description: Lead(s) created
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api/leads/search:
+    get:
+      tags: [Leads]
+      summary: Search leads
+      parameters:
+        - name: email
+          in: query
+          schema:
+            type: string
+        - name: criteria
+          in: query
+          schema:
+            type: string
+            example: "(Email:equals:test@example.com)"
+      responses:
+        '200':
+          description: Matching leads
+
+  /api/leads/{id}:
+    get:
+      tags: [Leads]
+      summary: Get a lead by ID
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: Lead record
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Leads]
+      summary: Update a lead
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Lead'
+      responses:
+        '200':
+          description: Updated
+
+    delete:
+      tags: [Leads]
+      summary: Delete a lead
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: Deleted
+
+  # ── Contacts ─────────────────────────────────────────────────────────────────
+  /api/contacts:
+    get:
+      tags: [Contacts]
+      summary: List contacts (paginated)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated contacts
+
+    post:
+      tags: [Contacts]
+      summary: Create or upsert contact(s)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Contact'
+      responses:
+        '201':
+          description: Created
+
+  /api/contacts/search:
+    get:
+      tags: [Contacts]
+      summary: Search contacts
+      parameters:
+        - name: email
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Matching contacts
+
+  /api/contacts/{id}:
+    get:
+      tags: [Contacts]
+      summary: Get contact by ID
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: Contact record
+    put:
+      tags: [Contacts]
+      summary: Update contact
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Contact'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Contacts]
+      summary: Delete contact
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: Deleted
+
+  # ── Deals ─────────────────────────────────────────────────────────────────────
+  /api/deals:
+    get:
+      tags: [Deals]
+      summary: List deals (paginated)
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Paginated deals
+
+    post:
+      tags: [Deals]
+      summary: Create deal(s)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Deal'
+      responses:
+        '201':
+          description: Created
+
+  /api/deals/{id}:
+    get:
+      tags: [Deals]
+      summary: Get deal by ID
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: Deal record
+    put:
+      tags: [Deals]
+      summary: Update deal
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Deal'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Deals]
+      summary: Delete deal
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+      responses:
+        '200':
+          description: Deleted
+
+  # ── Sync ──────────────────────────────────────────────────────────────────────
+  /api/sync/push:
+    post:
+      tags: [Sync]
+      summary: Push Liferay records into Zoho CRM
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: Push result
+
+  /api/sync/pull:
+    post:
+      tags: [Sync]
+      summary: Pull all records from a Zoho module
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPullRequest'
+      responses:
+        '200':
+          description: Pulled records
+
+  /api/sync/status:
+    get:
+      tags: [Sync]
+      summary: Last sync metadata per module
+      responses:
+        '200':
+          description: Sync status map
+
+  # ── Webhooks ──────────────────────────────────────────────────────────────────
+  /webhooks/zoho:
+    post:
+      tags: [Webhooks]
+      summary: Receive Zoho CRM webhook events
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookPayload'
+      responses:
+        '200':
+          description: Event acknowledged
+        '401':
+          description: Invalid HMAC signature
+
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    RecordId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PerPage:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    Fields:
+      name: fields
+      in: query
+      schema:
+        type: string
+        example: "firstName,lastName,email"
+    Criteria:
+      name: criteria
+      in: query
+      schema:
+        type: string
+        example: "(Email:equals:test@example.com)"
+    NoCache:
+      name: nocache
+      in: query
+      schema:
+        type: boolean
+
+  schemas:
+    Lead:
+      type: object
+      required: [lastName]
+      properties:
+        firstName:    { type: string }
+        lastName:     { type: string }
+        email:        { type: string, format: email }
+        phone:        { type: string }
+        company:      { type: string }
+        title:        { type: string }
+        leadSource:   { type: string }
+        industry:     { type: string }
+        description:  { type: string }
+        city:         { type: string }
+        state:        { type: string }
+        country:      { type: string }
+
+    Contact:
+      type: object
+      required: [lastName]
+      properties:
+        firstName:    { type: string }
+        lastName:     { type: string }
+        email:        { type: string, format: email }
+        phone:        { type: string }
+        mobile:       { type: string }
+        title:        { type: string }
+        department:   { type: string }
+        accountName:  { type: string }
+
+    Deal:
+      type: object
+      required: [dealName, stage]
+      properties:
+        dealName:     { type: string }
+        accountName:  { type: string }
+        amount:       { type: number }
+        closingDate:  { type: string, format: date }
+        stage:        { type: string }
+        probability:  { type: number }
+        description:  { type: string }
+
+    LeadListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lead'
+        pagination:
+          type: object
+          properties:
+            page:         { type: integer }
+            per_page:     { type: integer }
+            count:        { type: integer }
+            more_records: { type: boolean }
+
+    SyncPushRequest:
+      type: object
+      required: [module, records]
+      properties:
+        module:
+          type: string
+          enum: [Leads, Contacts, Deals]
+        records:
+          type: array
+          minItems: 1
+          items:
+            type: object
+
+    SyncPullRequest:
+      type: object
+      required: [module]
+      properties:
+        module:
+          type: string
+          enum: [Leads, Contacts, Deals]
+        params:
+          type: object
+
+    WebhookPayload:
+      type: object
+      properties:
+        module:    { type: string }
+        operation: { type: string, enum: [insert, update, delete] }
+        data:
+          type: array
+          items:
+            type: object
+
+    HealthResponse:
+      type: object
+      properties:
+        status:  { type: string }
+        checks:  { type: object }
+        version: { type: string }
+        uptime:  { type: number }
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+    NotFound:
+      description: Record not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string }
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              errors:
+                type: array
+                items:
+                  type: object
